@@ -1,0 +1,11 @@
+services:
+  api:
+    build: .
+    image: arabic-sentiment
+    ports:
+      - "8000:8000"
+    volumes:
+      # Cache the model so it is downloaded only once
+      - hf-cache:/home/appuser/.cache/huggingface
+volumes:
+  hf-cache:

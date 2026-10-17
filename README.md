@@ -1,5 +1,35 @@
 # Sentiment-Analysis
 
+# Arabic Sentiment Analysis (MLOps)
+
+AraBERT v2 fine-tuned on Arabic e-commerce reviews (negative / neutral / positive), served with FastAPI + Docker.
+
+## Run
+
+```bash
+docker compose up --build
+curl -s -X POST localhost:8000/predict -H "Content-Type: application/json" -d '{"text": "الخدمة ممتازة"}'
+uv run pytest
+```
+
+Model: [DoaaMoh/arabert-sentiment](https://huggingface.co/DoaaMoh/arabert-sentiment)
+
+## Results (validation set, 7,763 reviews)
+
+| Metric | Value |
+|---|---|
+| Accuracy | 0.7769 |
+| F1 macro | 0.6476 |
+| F1 weighted | 0.8132 |
+
+| Class | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| negative | 0.86 | 0.78 | 0.82 | 2778 |
+| neutral | 0.17 | 0.63 | 0.27 | 375 |
+| positive | 0.93 | 0.79 | 0.86 | 4610 |
+
+Trained with class-weighted CrossEntropy (3 epochs, max_length=128). Neutral is the weak class: only ~5% of the data, and the class weights trade precision for recall.
+
 ## Completion checklists
 
 ### P R O J E C T 1 · D E E P L E A R N I N G — C O D E , P A C K A G I N G , T R A C K I N G , V E R S I O N I N G

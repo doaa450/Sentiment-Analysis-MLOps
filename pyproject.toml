@@ -9,9 +9,36 @@ description = "Arabic sentiment analysis for e-commerce reviews"
 requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2",
+    "pydantic-settings",
     "fastapi",
-    "uvicorn",
+    "uvicorn[standard]",
+    "torch",
+    "transformers",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest", "httpx", "ruff", "pre-commit",
+    "pandas", "scikit-learn", "matplotlib", "seaborn",
+    "arabic-reshaper", "python-bidi", "accelerate",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "T20"]  # T20 bans print()
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
