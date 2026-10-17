@@ -1,4 +1,3 @@
-# Sentiment-Analysis
 
 # Arabic Sentiment Analysis (MLOps)
 
@@ -36,17 +35,17 @@ Trained with class-weighted CrossEntropy (3 epochs, max_length=128). Neutral is 
 
 ✅ 1- src/ layout with pyproject.toml — pip install -e . works
 
-☐ 2- AraBERT or CAMeL-BERT loaded in a class with type hints
+✅ 2- AraBERT or CAMeL-BERT loaded in a class with type hints
 
-☐ 3- FastAPI /predict : {text: str} → {label, confidence, model_version}
+✅ 3- FastAPI /predict : {text: str} → {label, confidence, model_version}
 
-☐ 4- Pydantic rejects empty text — 422 returned, tested with curl
+✅ 4- Pydantic rejects empty text — 422 returned, tested with curl
 
-☐ 5- /health returns {status: healthy} — used by the Docker healthcheck
+✅ 5- /health returns {status: healthy} — used by the Docker healthcheck
 
-☐ 6- docker build -t arabic-sentiment . passes; docker compose up starts the service on port 8000
+✅ 6- docker build -t arabic-sentiment . passes; docker compose up starts the service on port 8000
 
-☐ 7- README: exactly 3 commands to run on any machine
+✅ 7- README: exactly 3 commands to run on any machine
 
 ☐ 8- MLflow tracking server running — UI accessible
 
