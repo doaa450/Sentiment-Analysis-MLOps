@@ -5,19 +5,33 @@
 ### P R O J E C T 1 · D E E P L E A R N I N G — C O D E , P A C K A G I N G , T R A C K I N G , V E R S I O N I N G
 
 ✅ 1- src/ layout with pyproject.toml — pip install -e . works
+
 ☐ 2- AraBERT or CAMeL-BERT loaded in a class with type hints
+
 ☐ 3- FastAPI /predict : {text: str} → {label, confidence, model_version}
+
 ☐ 4- Pydantic rejects empty text — 422 returned, tested with curl
+
 ☐ 5- /health returns {status: healthy} — used by the Docker healthcheck
+
 ☐ 6- docker build -t arabic-sentiment . passes; docker compose up starts the service on port 8000
+
 ☐ 7- README: exactly 3 commands to run on any machine
+
 ☐ 8- MLflow tracking server running — UI accessible
+
 ☐ 9- ≥ 5 runs: model_name , lr , batch_size , accuracy , f1_macro
+
 ☐ 10- MLflow comparison screenshot in /reports/mlflow_comparison.png
+
 ☐ 11- Best model registered as ArabicSentiment → promoted to Production
+
 ☐ 12- Labeled dataset tracked with DVC — dvc status shows clean
+
 ☐ 13- dvc repro reproduces training with the same metrics (± 0.005)
+
 ☐ 14- GitHub Actions: lint → test → docker build → push on main
+
 ☐ 15- CI fails if f1_macro drops below baseline — documented in README
 
 
