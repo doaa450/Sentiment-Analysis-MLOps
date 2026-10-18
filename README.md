@@ -47,7 +47,7 @@ Trained with class-weighted CrossEntropy (3 epochs, max_length=128). Neutral is 
 
 ✅ 7- README: exactly 3 commands to run on any machine
 
-☐ 8- MLflow tracking server running — UI accessible
+✅ 8- MLflow tracking server running — UI accessible
 
 ☐ 9- ≥ 5 runs: model_name , lr , batch_size , accuracy , f1_macro
 
