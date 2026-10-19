@@ -64,7 +64,7 @@ Trained with class-weighted CrossEntropy (3 epochs, max_length=128). Neutral is 
 ☐ 15- CI fails if f1_macro drops below baseline — documented in README
 
 
-### P R O J E C T 2 · L L M / R A G — C O D E , P A C K A G I N G , T R A C K I N G , V E R S I O N I N G
+### P R O J E C T 1 · D E E P L E A R N I N G — S E R V I N G , M O N I T O R I N G , O P T I M I Z A T I O N
 
 ☐ 1- BentoML service with batchable=True Runner — bentoml models list shows the model
 
