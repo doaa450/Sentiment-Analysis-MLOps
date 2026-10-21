@@ -1,7 +1,5 @@
 .venv/
 .env
-data/*
-!data/*.dvc
 models/
 reports/
 __pycache__/
