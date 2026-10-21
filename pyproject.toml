@@ -14,13 +14,24 @@ dependencies = [
     "uvicorn[standard]",
     "torch",
     "transformers",
+    "mlflow==3.10.1",
+    "dvc[gdrive]>=3.67.1",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest", "httpx", "ruff", "pre-commit",
-    "pandas", "scikit-learn", "matplotlib", "seaborn",
-    "arabic-reshaper", "python-bidi", "accelerate",
+    "pytest",
+    "httpx",
+    "ruff",
+    "pre-commit",
+    "pandas",
+    "scikit-learn",
+    "matplotlib",
+    "seaborn",
+    "arabic-reshaper",
+    "python-bidi",
+    "accelerate",
+    "boto3>=1.43.115",
 ]
 
 [tool.ruff]

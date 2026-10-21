@@ -1,6 +1,7 @@
 .venv/
 .env
-data/
+data/*
+!data/*.dvc
 models/
 reports/
 __pycache__/
