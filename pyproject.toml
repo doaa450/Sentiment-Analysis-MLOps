@@ -16,6 +16,7 @@ dependencies = [
     "transformers",
     "mlflow==3.10.1",
     "dvc[gdrive]>=3.67.1",
+    "pyopenssl>=24.3.0",
 ]
 
 [dependency-groups]
