@@ -325,13 +325,40 @@ loss = alpha * CE_weighted(student, labels) + (1 - alpha) * T^2 * KL(teacher_sof
 
 The student has half the layers and loses about 0.007 F1 macro, with the same accuracy. Its neutral F1 is lower, and the class weights are applied only to the cross-entropy part of the loss. ONNX export, INT8 quantization and the latency benchmark come next (see the [Roadmap](#roadmap)).
 
+## Phase 9: Data Versioning with DVC
+
+The labeled dataset (`data/Final_Data.csv`, 4.4 MB) is tracked with [DVC](https://dvc.org). Git stores only the small pointer file `data/Final_Data.csv.dvc`; the data itself lives in a Google Drive remote.
+
+```bash
+uv run dvc pull      # download the dataset from the remote
+uv run dvc status    # "Data and pipelines are up to date"
+```
+
+* **Remote**: Google Drive, using a personal OAuth client. The client id and secret are stored in `.dvc/config.local`, which Git ignores.
+* **Check**: the cache was deleted and `dvc pull` restored `Final_Data.csv` (same size, `dvc status` clean).
+* **Not done**: `dvc repro`. Training runs on Kaggle (GPU), and the laptop cannot retrain AraBERT, so there is no DVC pipeline that reproduces the training metrics.
+
+## Phase 10: CI/CD with GitHub Actions
+
+`.github/workflows/ci.yml` runs on every pull request and on every push to `main`:
+
+| Job | What it does |
+|---|---|
+| `lint` | `ruff check` and `ruff format --check` (notebooks are excluded) |
+| `test` | `pytest`, then the F1 quality gate |
+| `build` | builds the Docker image; on `main` it also pushes it to `ghcr.io/doaa450/sentiment-analysis-mlops` (tags `latest` and `sha-<commit>`) |
+
+**F1 quality gate.** `scripts/check_f1_gate.py` reads `metrics/metrics.json` and `metrics/baseline.json` and exits with code 1 if `f1_macro` is below the baseline (0.6537, the published baseline model). The CI fails and the merge is blocked.
+
+> **Limitation:** the gate compares a recorded metrics file. It does not retrain or re-evaluate the model, because evaluation needs the Kaggle split and a GPU. It catches a lowered `metrics.json`, not a degraded model by itself. Update `metrics/metrics.json` after every new evaluation.
+
 ## Roadmap
 
 | Phase | Title | Status |
 |---|---|---|
 | 1 to 8 | Setup, data, baseline, API, Docker, MLflow, registry, distillation | Done |
-| 9 | Data versioning with DVC | Planned |
-| 10 | CI/CD with GitHub Actions and an F1 quality gate | Planned |
+| 9 | Data versioning with DVC | Done |
+| 10 | CI/CD with GitHub Actions and an F1 quality gate | Done |
 | 11 | Load testing the FastAPI baseline (Locust) | Planned |
 | 12 | ONNX export, INT8 quantization and benchmark table | Planned |
 | 13 | BentoML serving with adaptive batching | Planned |
@@ -382,9 +409,9 @@ Doaa, [@doaa450](https://github.com/doaa450)
 
 ❎ 13- dvc repro reproduces training with the same metrics (± 0.005)
 
-☐ 14- GitHub Actions: lint → test → docker build → push on main
+✅ 14- GitHub Actions: lint → test → docker build → push on main
 
-☐ 15- CI fails if f1_macro drops below baseline — documented in README
+✅ 15- CI fails if f1_macro drops below baseline — documented in README
 
 
 ### P R O J E C T 1 · D E E P L E A R N I N G — S E R V I N G , M O N I T O R I N G , O P T I M I Z A T I O N
