@@ -378,9 +378,9 @@ Doaa, [@doaa450](https://github.com/doaa450)
 
 ✅ 11- Best model registered as ArabicSentiment → promoted to Production
 
-☐ 12- Labeled dataset tracked with DVC — dvc status shows clean
+✅ 12- Labeled dataset tracked with DVC — dvc status shows clean
 
-☐ 13- dvc repro reproduces training with the same metrics (± 0.005)
+❎ 13- dvc repro reproduces training with the same metrics (± 0.005)
 
 ☐ 14- GitHub Actions: lint → test → docker build → push on main
 
@@ -415,7 +415,7 @@ Doaa, [@doaa450](https://github.com/doaa450)
 
 ☐ 13- Alert: PSI > 0.25 → notification documented in README
 
-☐ 14- 12-layer AraBERT distilled to a 6-layer student — model file committed
+✅ 14- 12-layer AraBERT distilled to a 6-layer student — model file committed
 
 ☐ 15- INT8 ONNX quantization applied — model_int8.onnx committed
 
