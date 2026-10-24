@@ -33,6 +33,7 @@ dev = [
     "python-bidi",
     "accelerate",
     "boto3>=1.43.115",
+    "locust>=2.46.0",
 ]
 
 [tool.ruff]
