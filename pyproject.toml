@@ -34,6 +34,8 @@ dev = [
     "accelerate",
     "boto3>=1.43.115",
     "locust>=2.46.0",
+    "onnx>=1.23.2",
+    "onnxruntime>=1.23.2",
 ]
 
 [tool.ruff]
