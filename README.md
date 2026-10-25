@@ -546,6 +546,17 @@ The same table is in `reports/benchmark_table.md` and `reports/benchmark_table.c
 | Size | `model.safetensors` for PyTorch, the `.onnx` file for ONNX |
 | Accuracy runs | Batches of 32, sorted by length, padded; max length 128 |
 
+### Model chosen for production
+
+The production candidate is the **distilled student exported to ONNX and quantized to INT8** (`models/onnx/student_int8.onnx`). It was chosen over the other three variants for these reasons:
+
+- **Quality:** F1 macro is 0.6556, the same as the student in PyTorch and in ONNX FP32, and 0.007 below the teacher (about 1% relative). Its accuracy is 0.8177 (teacher: 0.8114).
+- **Size:** 93.1 MB, 4 times smaller than the FP32 ONNX file and 5.8 times smaller than the teacher. This matters on the 4 GB RAM machine used in this project.
+- **Latency:** the median is 34.5 ms per review, 5.2 times faster than the teacher. The p95 (150.6 ms) is about the same as ONNX FP32 (147.3 ms), so INT8 mainly helps the median and the size.
+- **Cost:** the neutral-class F1 is lower than the teacher's (0.2593 against 0.2806). Neutral reviews are only about 5% of the data, so this is the main trade-off. If the neutral class matters most, the teacher is the better choice, at a higher cost in size and latency.
+
+This choice rests on one validation set, which was also used to select the best teacher run, and on a single-request latency test. The model has not been load tested yet; the plan is to serve it with BentoML in the next phase and measure it under load.
+
 ### Limitations
 
 - One latency run per variant. The p95 is the slowest 5% of only 200 calls, so differences of a few milliseconds should not be over-interpreted.
