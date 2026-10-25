@@ -22,6 +22,7 @@ An end-to-end MLOps pipeline for classifying Arabic customer reviews as **negati
 * [Phase 9: Data Versioning with DVC](#phase-9-data-versioning-with-dvc)
 * [Phase 10: CI/CD with GitHub Actions](#phase-10-cicd-with-github-actions)
 * [Phase 11: Load Testing the FastAPI Baseline](#phase-11-load-testing-the-fastapi-baseline)
+* [Phase 12: ONNX Export, INT8 Quantization and Benchmark](#phase-12-onnx-export-int8-quantization-and-benchmark)
 * [Roadmap](#roadmap)
 * [Known Issues](#known-issues)
 * [Completion Checklists](#completion-checklists)
@@ -44,6 +45,7 @@ Customer reviews are noisy, written in Modern Standard Arabic and in regional di
 * **DVC** data versioning with a Google Drive remote
 * **GitHub Actions** CI: lint, tests with an F1 quality gate, Docker build and push
 * **Locust** load test of the FastAPI baseline, saved as an HTML report and CSV files
+* **ONNX Runtime** export and dynamic **INT8** quantization of the student, benchmarked against PyTorch on accuracy, size and latency
 * Linting (ruff) and pre-commit hooks, with unit tests that do not need the real model
 
 ## Results at a Glance
@@ -78,6 +80,7 @@ Details are in [Phase 6](#phase-6-experiment-tracking-with-mlflow), [Phase 8](#p
 | Data versioning | DVC with a Google Drive remote |
 | CI/CD | GitHub Actions, GitHub Container Registry (`ghcr.io`) |
 | Load testing | Locust |
+| Compression and inference | ONNX, ONNX Runtime (dynamic INT8 quantization) |
 | Tunnel (Kaggle to local MLflow) | ngrok |
 
 ## Project Architecture
@@ -123,7 +126,13 @@ Sentiment-Analysis-MLOps/
 ├── scripts/
 │   ├── register_model.py        # log + register the best teacher in MLflow
 │   ├── finish_registration.py   # tags + Production alias for an existing version
-│   └── check_f1_gate.py         # CI quality gate
+│   ├── check_f1_gate.py         # CI quality gate
+│   ├── export_onnx.py           # student -> ONNX FP32 + parity check
+│   ├── quantize_onnx.py         # dynamic INT8 quantization
+│   ├── eval_pytorch.py          # evaluate a Hub model on the validation split
+│   ├── eval_onnx.py             # evaluate an ONNX model on the validation split
+│   ├── bench_latency.py         # batch-1 CPU latency per variant
+│   └── make_benchmark_table.py  # builds reports/benchmark_table.{md,csv}
 ├── metrics/
 │   ├── metrics.json             # recorded F1 of the current best model
 │   └── baseline.json            # F1 threshold used by the gate
@@ -135,7 +144,13 @@ Sentiment-Analysis-MLOps/
 │   ├── f1.png
 │   ├── locust_fastapi.html      # Locust report (50 users)
 │   ├── locust_fastapi_stats.csv
-│   └── locust_fastapi_stats_history.csv
+│   ├── locust_fastapi_stats_history.csv
+│   ├── benchmark_table.md       # 4-variant table (also .csv)
+│   ├── eval_*.json              # accuracy / F1 per variant
+│   ├── latency_*.json           # p50 / p95 / size per variant
+│   └── onnx_parity_student.json # ONNX vs PyTorch check
+├── models/onnx/
+│   └── student_int8.onnx        # INT8 student (the FP32 file is git-ignored)
 ├── docker/mlflow/Dockerfile     # MLflow server image
 ├── notebooks/
 │   └── eda_arabert.ipynb
@@ -281,7 +296,7 @@ Baseline results: accuracy **0.7826**, F1 macro **0.6537**, F1 weighted **0.8160
 3. Save the ngrok URL as the Kaggle secret `MLFLOW_TRACKING_URI`
 4. Run the training notebook on Kaggle; each run logs its parameters, metrics and data fingerprints
 
-> **Note:** the Kaggle training notebook (baseline, five teacher runs and the distilled student) is not included in this repository. The original notebook that first trained the published baseline model no longer exists; the baseline numbers in this README come from re-evaluating the published model `DoaaMoh/arabert-sentiment` in the latest notebook.
+> **Note:** the Kaggle training notebook (baseline, five teacher runs and the distilled student) is `notebooks/eda_arabert.ipynb`, which also holds the EDA. The original notebook that first trained the published baseline model no longer exists; the baseline numbers in this README come from re-evaluating the published model `DoaaMoh/arabert-sentiment` in the latest notebook.
 
 Each run logs `model_name`, `lr`, `batch_size`, `epochs`, `seed`, the split settings, the metrics `accuracy`, `f1_macro` and `f1_neutral`, and MD5 fingerprints of the raw file, the train split and the validation split.
 
@@ -364,7 +379,7 @@ loss = alpha * CE_weighted(student, labels) + (1 - alpha) * T^2 * KL(teacher_sof
 | Teacher (12 layers) | 0.8114 | 0.6627 | 0.2806 |
 | Student (6 layers) | 0.8126 | 0.6556 | 0.2614 |
 
-The student has half the layers and loses about 0.007 F1 macro, with the same accuracy. Its neutral F1 is lower, and the class weights are applied only to the cross-entropy part of the loss. The student was trained on the same 80% split as the teacher, so the validation set was not seen by either model. The student is published on the Hub (see Phase 7). ONNX export, INT8 quantization and the latency benchmark come next (see the [Roadmap](#roadmap)).
+The student has half the layers and loses about 0.007 F1 macro, with the same accuracy. Its neutral F1 is lower, and the class weights are applied only to the cross-entropy part of the loss. The student was trained on the same 80% split as the teacher, so the validation set was not seen by either model. The student is published on the Hub (see Phase 7). ONNX export, INT8 quantization and the latency benchmark are in [Phase 12](#phase-12-onnx-export-int8-quantization-and-benchmark).
 
 ## Phase 9: Data Versioning with DVC
 
@@ -466,6 +481,75 @@ The numbers depend on the machine, so they are recorded here and must be reprodu
 * The test sends one short review per request. Longer texts would be slower (the maximum length is 128 tokens).
 * This is a single run per setting, so small differences between runs should not be over-interpreted.
 
+## Phase 12: ONNX Export, INT8 Quantization and Benchmark
+
+This phase compresses the distilled student further and measures what each step costs and gains. The student is exported to ONNX, quantized to INT8, and four variants are compared on the same validation set (7,763 reviews, same split as Phase 3) and on the same machine.
+
+### How to reproduce
+
+```bash
+uv run python scripts/export_onnx.py --legacy        # student -> models/onnx/student_fp32.onnx + parity check
+uv run python scripts/quantize_onnx.py               # dynamic INT8 -> models/onnx/student_int8.onnx
+
+uv run python scripts/eval_pytorch.py --repo DoaaMoh/arabert-sentiment-v2 --name teacher_pytorch
+uv run python scripts/eval_pytorch.py --repo DoaaMoh/arabert-sentiment-student --name student_pytorch
+uv run python scripts/eval_onnx.py --model models/onnx/student_fp32.onnx --name student_onnx_fp32
+uv run python scripts/eval_onnx.py --model models/onnx/student_int8.onnx --name student_onnx_int8
+
+for v in teacher_pytorch student_pytorch student_onnx_fp32 student_onnx_int8; do
+  uv run python scripts/bench_latency.py --variant $v
+done
+uv run python scripts/make_benchmark_table.py        # -> reports/benchmark_table.{md,csv}
+```
+
+The validation split is rebuilt inside each script with `arabic_sentiment.data.load_dataset` and `train_test_split(test_size=0.2, stratify=label, random_state=42)`, so no validation file is stored. It gives the same 38,814 / 31,051 / 7,763 rows as the training notebook.
+
+### Export and parity
+
+- The default PyTorch ONNX exporter (`dynamo=True`) needs the `onnxscript` package, which is not installed here, so the export uses the legacy TorchScript exporter (`--legacy`). It prints tracer warnings; the checks below are what show the graph still behaves like the original model.
+- The export script compares ONNX Runtime with PyTorch on 65 validation reviews (batches of 16 with different lengths, plus a batch of one): the largest absolute logit difference is 4.9e-6 and the predicted label is identical in all 65 cases (`reports/onnx_parity_student.json`).
+- On the full validation set the ONNX FP32 model gives exactly the same accuracy and F1 as the PyTorch student.
+- INT8 uses ONNX Runtime dynamic quantization with INT8 weights (`quantize_dynamic`, no calibration data).
+
+### Benchmark: four variants
+
+| Model | Backend | Accuracy | F1 macro | F1 neutral | Size (MB) | p50 (ms) | p95 (ms) |
+|---|---|---|---|---|---|---|---|
+| Teacher (12 layers) | PyTorch CPU FP32 | 0.8114 | 0.6627 | 0.2806 | 540.8 | 179.5 | 452.2 |
+| Student (6 layers) | PyTorch CPU FP32 | 0.8126 | 0.6556 | 0.2614 | 370.7 | 79.6 | 210.5 |
+| Student | ONNX Runtime CPU FP32 | 0.8126 | 0.6556 | 0.2614 | 370.8 | 41.5 | 147.3 |
+| Student | ONNX Runtime CPU INT8 | 0.8177 | 0.6556 | 0.2593 | 93.1 | 34.5 | 150.6 |
+
+The same table is in `reports/benchmark_table.md` and `reports/benchmark_table.csv`. Latency is for one review per call (batch of 1), including tokenization.
+
+### How to read the numbers
+
+- **Distillation:** the student is about 2.2 times faster than the teacher at p50 (179.5 to 79.6 ms) and loses 0.007 F1 macro.
+- **ONNX Runtime:** the same student is about 1.9 times faster at p50 than in PyTorch (79.6 to 41.5 ms) with identical predictions.
+- **INT8:** the file is 4 times smaller than FP32 (370.8 to 93.1 MB) and p50 improves about 1.2 times (41.5 to 34.5 ms). p95 did not improve (147.3 vs 150.6 ms); with one run on a small laptop this difference is within noise.
+- **Quality of INT8:** F1 macro is unchanged. Accuracy is 0.5 points higher and neutral F1 is slightly lower (0.2614 to 0.2593). The accuracy gain is probably quantization noise, not a real improvement.
+- **End to end:** compared with the teacher, the INT8 student is about 5.8 times smaller, 5.2 times faster at p50 and 3.0 times faster at p95, at the cost of 0.007 F1 macro and 0.021 neutral F1.
+- The INT8 model is committed as `models/onnx/student_int8.onnx` (93.1 MB). The FP32 model (371 MB) is not; recreate it with `scripts/export_onnx.py`.
+
+### Test conditions
+
+| Item | Value |
+|---|---|
+| Device | CPU only, 4 cores, 2 threads (PyTorch and ONNX Runtime) |
+| Machine | Laptop with 4 GB RAM; WSL2 limited to 3 GB (`.wslconfig`) |
+| Background | Docker Desktop closed during the latency runs |
+| Versions | torch 2.14.1 (CPU), transformers 5.19.0, onnx 1.23.2, onnxruntime 1.31.0 |
+| Latency sample | 200 reviews sampled from the validation set (`random_state=42`), 20 warm-up calls, one run per variant |
+| Size | `model.safetensors` for PyTorch, the `.onnx` file for ONNX |
+| Accuracy runs | Batches of 32, sorted by length, padded; max length 128 |
+
+### Limitations
+
+- One latency run per variant. The p95 is the slowest 5% of only 200 calls, so differences of a few milliseconds should not be over-interpreted.
+- This is single-request latency, not a load test. Phase 11 measured the FastAPI service under 50 users with the older published model (`DoaaMoh/arabert-sentiment`), so those numbers are not directly comparable with this table.
+- Label agreement between the FP32 and INT8 models was not measured separately; only the metrics on the validation set were compared.
+- The numbers depend on this laptop. Only the comparison between variants measured under the same conditions is meaningful.
+
 ## Roadmap
 
 | Phase | Title | Status |
@@ -474,12 +558,12 @@ The numbers depend on the machine, so they are recorded here and must be reprodu
 | 9 | Data versioning with DVC | Done |
 | 10 | CI/CD with GitHub Actions and an F1 quality gate | Done |
 | 11 | Load testing the FastAPI baseline (Locust) | Done |
-| 12 | ONNX export, INT8 quantization and benchmark table | Planned |
+| 12 | ONNX export, INT8 quantization and benchmark table | Done |
 | 13 | BentoML serving with adaptive batching | Planned |
-| 14 | TensorRT FP16 acceleration | Planned |
-| 15 | Batch scoring and drift detection (PSI and Evidently) | Planned |
-| 16 | Monitoring with Prometheus, Grafana and an alert | Planned |
-| 17 | Canary rollout with nginx and the final architecture diagram | Planned |
+| 14 | Canary rollout with nginx | Planned |
+| 15 | TensorRT FP16 acceleration | Skipped |
+| 16 | Batch scoring and drift detection (PSI and Evidently) | Planned |
+| 17 | Monitoring with Prometheus, Grafana and an alert, then the final architecture diagram | Planned |
 
 ## Known Issues
 
@@ -487,6 +571,7 @@ The numbers depend on the machine, so they are recorded here and must be reprodu
 * **Artifacts are uploaded from the host**: MinIO is only reachable from the local machine, so scripts that log artifacts (such as `register_model.py`) run locally, not on Kaggle. Kaggle only logs parameters, metrics and tags.
 * **Model version in the API**: `.env` does not set `SENTIMENT_MODEL_NAME` or `SENTIMENT_MODEL_VERSION`. Running the API without them loads the base AraBERT with a random classification head and reports `v0.1.0`, which gives meaningless predictions. Always pass both variables (or set them in `.env`) when running outside Docker Compose.
 * **Load test numbers are machine dependent**: see the limitations in [Phase 11](#phase-11-load-testing-the-fastapi-baseline).
+* **ONNX export needs the legacy exporter**: the default PyTorch ONNX exporter (`dynamo=True`) requires the `onnxscript` package, which is not installed, so `scripts/export_onnx.py` is run with `--legacy`. The legacy exporter prints tracer warnings; the parity check and the full validation run show that the exported graph gives the same predictions as the PyTorch model ([Phase 12](#phase-12-onnx-export-int8-quantization-and-benchmark)).
 
 ## Completion Checklists
 
@@ -530,9 +615,9 @@ The numbers depend on the machine, so they are recorded here and must be reprodu
 
 ✅ 3- Locust report before optimization in /reports/locust_fastapi.html
 
-☐ 4- TensorRT FP16 engine built — committed or documented
+❎ 4- TensorRT FP16 engine built — committed or documented (skipped)
 
-☐ 5- Locust after TensorRT in /reports/locust_trt.html — p95 in README
+❎ 5- Locust after TensorRT in /reports/locust_trt.html — p95 in README (skipped)
 
 ☐ 6- Batch scoring: ≥ 1,000 samples, output to /data/scoring/output/
 
@@ -552,9 +637,9 @@ The numbers depend on the machine, so they are recorded here and must be reprodu
 
 ✅ 14- 12-layer AraBERT distilled to a 6-layer student — model on the Hub with its SHA-256 (see Phase 7)
 
-☐ 15- INT8 ONNX quantization applied — model_int8.onnx committed
+✅ 15- INT8 ONNX quantization applied — INT8 model committed as models/onnx/student_int8.onnx
 
-☐ 16- Benchmark table: original vs distilled vs INT8 (accuracy, p95, size)
+✅ 16- Benchmark table: original vs distilled vs INT8 (accuracy, p95, size) — see Phase 12
 
 ☐ 17- Final architecture diagram in README covering all 5 sessions
 
