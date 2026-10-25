@@ -57,12 +57,15 @@ Model quality, on the validation set (7,763 reviews, 20% stratified split, `rand
 | Baseline (published model, `lr 2e-5`, `batch 32`) | 0.7826 | 0.6537 | 0.2854 |
 | **Best teacher** (`lr 3e-5`, `batch 16`) | **0.8114** | **0.6627** | 0.2806 |
 | Student (6 layers, distilled) | 0.8126 | 0.6556 | 0.2614 |
+| Student, INT8 (ONNX Runtime) | 0.8177 | 0.6556 | 0.2593 |
 
 Serving baseline (FastAPI, PyTorch FP32, CPU, 50 concurrent users, 2 minutes).
 
 | Endpoint | Requests | Failures | p50 | p95 | p99 | Throughput |
 |---|---|---|---|---|---|---|
 | `POST /predict` | 602 | 0 | 7,500 ms | 14,000 ms | 20,000 ms | 4.95 req/s |
+
+Compression (single review per call, CPU, 2 threads): the INT8 student is 93.1 MB against 540.8 MB for the teacher, with a median latency of 34.5 ms against 179.5 ms. These numbers come from a different test than the load test above, so they are not directly comparable with it (see Phase 12).
 
 Details are in [Phase 6](#phase-6-experiment-tracking-with-mlflow), [Phase 8](#phase-8-compression-by-knowledge-distillation) and [Phase 11](#phase-11-load-testing-the-fastapi-baseline).
 
