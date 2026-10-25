@@ -1,0 +1,8 @@
+{
+  "name": "teacher_pytorch",
+  "repo": "DoaaMoh/arabert-sentiment-v2",
+  "n": 7763,
+  "accuracy": 0.811413113487054,
+  "f1_macro": 0.6627085074436402,
+  "f1_neutral": 0.28056426332288403
+}

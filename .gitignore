@@ -1,6 +1,9 @@
 .venv/
 .env
-models/
+models/*
+!models/onnx/
+models/onnx/*
+!models/onnx/student_int8.onnx
 __pycache__/
 .pytest_cache/
 .ruff_cache/

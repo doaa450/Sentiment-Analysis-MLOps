@@ -1,0 +1,8 @@
+{
+  "name": "student_onnx_fp32",
+  "model": "models/onnx/student_fp32.onnx",
+  "n": 7763,
+  "accuracy": 0.8125724591008631,
+  "f1_macro": 0.6555621491629894,
+  "f1_neutral": 0.26138279932546377
+}

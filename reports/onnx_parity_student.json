@@ -1,0 +1,8 @@
+{
+  "samples": 65,
+  "max_abs_logit_diff": 4.887580871582031e-06,
+  "argmax_agreement": 1.0,
+  "exporter": "legacy",
+  "file": "models/onnx/student_fp32.onnx",
+  "size_bytes": 370806606
+}

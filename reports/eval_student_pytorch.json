@@ -1,0 +1,8 @@
+{
+  "name": "student_pytorch",
+  "repo": "DoaaMoh/arabert-sentiment-student",
+  "n": 7763,
+  "accuracy": 0.8125724591008631,
+  "f1_macro": 0.6555621491629894,
+  "f1_neutral": 0.26138279932546377
+}

@@ -1,0 +1,8 @@
+{
+  "name": "student_onnx_int8",
+  "model": "models/onnx/student_int8.onnx",
+  "n": 7763,
+  "accuracy": 0.8177251062733479,
+  "f1_macro": 0.6555547126900043,
+  "f1_neutral": 0.2593283582089552
+}
