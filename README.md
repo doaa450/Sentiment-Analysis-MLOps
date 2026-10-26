@@ -24,6 +24,7 @@ An end-to-end MLOps pipeline for classifying Arabic customer reviews as **negati
 * [Phase 11: Load Testing the FastAPI Baseline](#phase-11-load-testing-the-fastapi-baseline)
 * [Phase 12: ONNX Export, INT8 Quantization and Benchmark](#phase-12-onnx-export-int8-quantization-and-benchmark)
 * [Phase 13: BentoML Serving with Adaptive Batching](#phase-13-bentoml-serving-with-adaptive-batching)
+* [Phase 14: Canary Rollout with nginx](#phase-14-canary-rollout-with-nginx)
 * [Roadmap](#roadmap)
 * [Known Issues](#known-issues)
 * [Completion Checklists](#completion-checklists)
@@ -673,6 +674,32 @@ uv run python scripts/batch_score.py
 * The checklist asks for `localhost:8000`; BentoML listens on 3000 by default and the service was run there.
 * Model quality was not re-evaluated through the service. The numpy softmax was checked on two reviews only, not against the FastAPI outputs on the validation set.
 
+## Phase 14: Canary Rollout with nginx
+
+`deploy/nginx_canary.conf` splits traffic between the current service (stable, INT8 bento on port 3000, weight 95) and a candidate (student FP32, port 3001, weight 5). nginx listens on port 8080.
+
+> **Status:** the configuration was written and its syntax was checked with `nginx -t` (in a Docker container). The canary itself was **not run**: the candidate service was not built, and the traffic split was not measured.
+
+### Rollout stages
+
+| Stage | Candidate share | Move to the next stage when |
+|---|---|---|
+| 1 | 5% | No failures (HTTP 5xx) and p95 not worse than stable by more than 10% |
+| 2 | 25% | Same conditions, plus the predicted labels agree with stable on a sample of requests |
+| 3 | 50% | Same conditions as stage 2 |
+| 4 | 100% | Candidate becomes the stable service; the old one is kept for rollback |
+
+The thresholds (10% p95 margin, label agreement) are choices made for this project, not measured values. Each stage should be observed for a fixed period before moving on; that period was not defined.
+
+### Rollback
+
+Set the candidate `weight` to `0` (or remove its `server` line) in `deploy/nginx_canary.conf`, then reload nginx with `nginx -s reload`. All traffic goes back to the stable service without restarting it.
+
+### Limitations
+
+* The split was not verified: with a small number of requests the share per server will not be exactly 5%.
+* Monitoring that would drive the go/no-go decision (Prometheus, Grafana, alert) is planned in a later phase.
+
 ## Roadmap
 
 | Phase | Title | Status |
@@ -683,7 +710,7 @@ uv run python scripts/batch_score.py
 | 11 | Load testing the FastAPI baseline (Locust) | Done |
 | 12 | ONNX export, INT8 quantization and benchmark table | Done |
 | 13 | BentoML serving with adaptive batching | Done |
-| 14 | Canary rollout with nginx | Planned |
+| 14 | Canary rollout with nginx (config written and syntax-checked, not run) | Done |
 | 15 | TensorRT FP16 acceleration | Skipped |
 | 16 | Batch scoring and drift detection (PSI and Evidently) | Planned |
 | 17 | Monitoring with Prometheus, Grafana and an alert, then the final architecture diagram | Planned |
@@ -744,7 +771,7 @@ uv run python scripts/batch_score.py
 
 ✅ 6- Batch scoring: ≥ 1,000 samples, output to data/scoring/output/ (7,763 rows; see Phase 13)
 
-☐ 7- nginx canary config: weight 5/95 — rollout stages in README
+✅ 7- nginx canary config: weight 5/95 — rollout stages in README (config syntax-checked with nginx -t, canary not run; see Phase 14)
 
 ☐ 8- Evidently DataDrift report on the latest batch — saved in /reports/
 
