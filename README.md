@@ -25,6 +25,7 @@ An end-to-end MLOps pipeline for classifying Arabic customer reviews as **negati
 * [Phase 12: ONNX Export, INT8 Quantization and Benchmark](#phase-12-onnx-export-int8-quantization-and-benchmark)
 * [Phase 13: BentoML Serving with Adaptive Batching](#phase-13-bentoml-serving-with-adaptive-batching)
 * [Phase 14: Canary Rollout with nginx](#phase-14-canary-rollout-with-nginx)
+* [Phase 16: Drift Detection with PSI and Evidently](#phase-16-drift-detection-with-psi-and-evidently)
 * [Roadmap](#roadmap)
 * [Known Issues](#known-issues)
 * [Completion Checklists](#completion-checklists)
@@ -49,6 +50,7 @@ Customer reviews are noisy, written in Modern Standard Arabic and in regional di
 * **Locust** load test of the FastAPI baseline, saved as an HTML report and CSV files
 * **ONNX Runtime** export and dynamic **INT8** quantization of the student, benchmarked against PyTorch on accuracy, size and latency
 * **BentoML** service for the INT8 student with adaptive batching, health probes and a `/metrics` endpoint, packaged as a Docker image without PyTorch
+* **Drift detection**: PSI and Evidently reports on the batch-scored data, run after every scoring run
 * Linting (ruff) and pre-commit hooks, with unit tests that do not need the real model
 
 ## Results at a Glance
@@ -87,6 +89,7 @@ Details are in [Phase 6](#phase-6-experiment-tracking-with-mlflow), [Phase 8](#p
 | CI/CD | GitHub Actions, GitHub Container Registry (`ghcr.io`) |
 | Load testing | Locust |
 | Compression and inference | ONNX, ONNX Runtime (dynamic INT8 quantization) |
+| Drift detection | Evidently 0.7, PSI in numpy |
 | Tunnel (Kaggle to local MLflow) | ngrok |
 
 ## Project Architecture
@@ -700,6 +703,33 @@ Set the candidate `weight` to `0` (or remove its `server` line) in `deploy/nginx
 * The split was not verified: with a small number of requests the share per server will not be exactly 5%.
 * Monitoring that would drive the go/no-go decision (Prometheus, Grafana, alert) is planned in a later phase.
 
+## Phase 16: Drift Detection with PSI and Evidently
+
+`scripts/drift_check.py` computes the Population Stability Index (PSI) for `text_length` and `confidence` and writes an Evidently data drift report (HTML) in `reports/`. `scripts/batch_score.py` runs it at the end of every scoring run.
+
+```bash
+uv run python scripts/batch_score.py        # scoring, then the drift check
+uv run python scripts/drift_check.py        # drift check alone, on the existing scored file
+```
+
+PSI uses 10 bins whose edges are the quantiles of the reference data. Common reading: below 0.1 no change, 0.1 to 0.25 moderate change, above 0.25 large change.
+
+| Comparison | PSI `text_length` | PSI `confidence` | Report |
+|---|---|---|---|
+| Two random halves of the scored validation split (same distribution) | 0.0023 | 0.0039 | `reports/drift_report_val_halves.html` |
+| Reviews longer than the median against the reference half (artificial shift) | 6.0281 | 0.0572 | `reports/drift_report_long_reviews.html` |
+
+* The first row shows no false alarm on data from the same distribution. The second shows that the PSI reacts when the input changes.
+* The shift in the second row is artificial and large by construction, so its result was expected. It shows that the pipeline works, not that real drift was found.
+* `confidence` moved little (0.0572) although review length changed a lot. This is one observation, not a general rule.
+
+### Limitations
+
+* The reference is half of the same validation file, so the drift check after each scoring run (checklist item 10) is satisfied in form: it is not a comparison with older production data.
+* The 10 bins and the 0.1 and 0.25 thresholds are common conventions, not values tuned on this project.
+* The checklist calls the feature `confidence_score`; the column is named `confidence`.
+* The PSI is not yet exposed to Prometheus (checklist item 11).
+
 ## Roadmap
 
 | Phase | Title | Status |
@@ -712,7 +742,7 @@ Set the candidate `weight` to `0` (or remove its `server` line) in `deploy/nginx
 | 13 | BentoML serving with adaptive batching | Done |
 | 14 | Canary rollout with nginx (config written and syntax-checked, not run) | Done |
 | 15 | TensorRT FP16 acceleration | Skipped |
-| 16 | Batch scoring and drift detection (PSI and Evidently) | Planned |
+| 16 | Batch scoring and drift detection (PSI and Evidently) | Done (reference is half of the same file) |
 | 17 | Monitoring with Prometheus, Grafana and an alert, then the final architecture diagram | Planned |
 
 ## Known Issues
@@ -773,11 +803,11 @@ Set the candidate `weight` to `0` (or remove its `server` line) in `deploy/nginx
 
 ✅ 7- nginx canary config: weight 5/95 — rollout stages in README (config syntax-checked with nginx -t, canary not run; see Phase 14)
 
-☐ 8- Evidently DataDrift report on the latest batch — saved in /reports/
+✅ 8- Evidently DataDrift report on the latest batch — saved in /reports/ (see Phase 16)
 
-☐ 9- PSI computed for text_length and confidence_score features
+✅ 9- PSI computed for text_length and confidence_score features (the column is named `confidence`; see Phase 16)
 
-☐ 10- Drift check triggered after every batch scoring run
+✅ 10- Drift check triggered after every batch scoring run (reference is half of the same file; see Phase 16)
 
 ☐ 11- Prometheus exposes the PSI score at /metrics
 
