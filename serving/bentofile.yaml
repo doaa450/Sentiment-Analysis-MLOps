@@ -1,0 +1,19 @@
+service: "service:SentimentService"
+description: |
+  Arabic review sentiment (negative / neutral / positive) served from the
+  INT8 ONNX student with adaptive micro-batching. POST /predict with
+  {"texts": ["..."]}; probes at /livez and /readyz; metrics at /metrics.
+labels:
+  stage: int8
+  variant: onnx-int8
+include:
+  - "service.py"
+models:
+  - "arabic_sentiment_student_int8:latest"
+python:
+  packages:
+    - "onnxruntime>=1.31.0"
+    - "transformers>=5.19.0"
+    - "numpy>=2.5.4"
+docker:
+  python_version: "3.14"

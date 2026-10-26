@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+POST,/predict,"CatchResponseError('Expected 200, got 503')",2405,2026-10-25T09:45:43Z,2026-10-25T09:47:41Z

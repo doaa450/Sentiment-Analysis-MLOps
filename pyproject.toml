@@ -36,6 +36,7 @@ dev = [
     "locust>=2.46.0",
     "onnx>=1.23.2",
     "onnxruntime>=1.23.2",
+    "bentoml>=1.4.40",
 ]
 
 [tool.ruff]
