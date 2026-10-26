@@ -54,6 +54,37 @@ Customer reviews are noisy, written in Modern Standard Arabic and in regional di
 * **Drift detection**: PSI and Evidently reports on the batch-scored data, run after every scoring run
 * Linting (ruff) and pre-commit hooks, with unit tests that do not need the real model
 
+## Quick start (3 commands)
+
+Needs Docker and about 3 GB of free RAM. No GPU and no accounts. The model and its tokenizer are inside the repository (`models/onnx/student_int8.onnx`) and the Bento is built locally.
+
+```bash
+git clone https://github.com/doaa450/Sentiment-Analysis-MLOps.git && cd Sentiment-Analysis-MLOps
+uv sync && uv run python scripts/save_to_bento.py && cd serving && uv run bentoml build && uv run bentoml containerize sentiment_service:latest --image-tag arabic-sentiment-bento:0.1.0
+docker run -d --name sentiment -p 3000:3000 arabic-sentiment-bento:0.1.0
+```
+
+The service is ready when `/readyz` returns 200 (about 30 seconds after start):
+
+```bash
+curl http://localhost:3000/readyz
+```
+
+Then ask for a prediction:
+
+```bash
+curl -X POST http://localhost:3000/predict -H "Content-Type: application/json" \
+     -d '{"texts": ["الخدمة ممتازة"]}'
+```
+
+The response is a list with `label`, `confidence` and `model_version`. Stop it with `docker rm -f sentiment`.
+
+### Requirements
+
+* Docker, and [uv](https://docs.astral.sh/uv/) with Python 3.14
+* About 1.5 GB of disk for the image
+* The first command downloads the tokenizer from the Hugging Face Hub once (`DoaaMoh/arabert-sentiment-student`); no token is needed because the repository is public
+
 ## Results at a Glance
 
 Model quality, on the validation set (7,763 reviews, 20% stratified split, `random_state=42`).
@@ -883,7 +914,7 @@ The metric names come from the `/metrics` output of the bento seen in Phase 13. 
 
 ✅ 16- Benchmark table: original vs distilled vs INT8 (accuracy, p95, size) — see Phase 12
 
-☐ 17- Final architecture diagram in README covering all 5 sessions
+✅ 17- Final architecture diagram in README covering all 5 sessions
 
 ## License
 
