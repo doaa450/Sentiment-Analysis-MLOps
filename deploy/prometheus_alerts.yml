@@ -1,0 +1,10 @@
+groups:
+  - name: drift
+    rules:
+      - alert: PSIDriftHigh
+        expr: psi{feature="text_length"} > 0.25
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PSI of {{ $labels.feature }} is {{ $value }} (run {{ $labels.run }})"

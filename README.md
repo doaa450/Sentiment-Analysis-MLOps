@@ -26,6 +26,7 @@ An end-to-end MLOps pipeline for classifying Arabic customer reviews as **negati
 * [Phase 13: BentoML Serving with Adaptive Batching](#phase-13-bentoml-serving-with-adaptive-batching)
 * [Phase 14: Canary Rollout with nginx](#phase-14-canary-rollout-with-nginx)
 * [Phase 16: Drift Detection with PSI and Evidently](#phase-16-drift-detection-with-psi-and-evidently)
+* [Phase 17: Monitoring with Prometheus](#phase-17-monitoring-with-prometheus-documented-partly-run)
 * [Roadmap](#roadmap)
 * [Known Issues](#known-issues)
 * [Completion Checklists](#completion-checklists)
@@ -730,6 +731,36 @@ PSI uses 10 bins whose edges are the quantiles of the reference data. Common rea
 * The checklist calls the feature `confidence_score`; the column is named `confidence`.
 * The PSI is not yet exposed to Prometheus (checklist item 11).
 
+## Phase 17: Monitoring with Prometheus (documented, partly run)
+
+> **Status:** only the PSI exporter was run. Prometheus, Grafana and Alertmanager were **not** started. The Prometheus config and the alert rule were syntax-checked with `promtool` (in a Docker container), nothing more.
+
+| Item | What exists | What was verified |
+|---|---|---|
+| PSI exporter (`scripts/psi_exporter.py`) | Serves the `psi{run, feature}` gauge on `:9100/metrics`, reading `reports/psi_latest.json` | Run with `curl`: 4 values, equal to the PSI printed by `drift_check.py` |
+| `deploy/prometheus.yml` | Scrapes the bento (`:3000/metrics`) and the exporter (`:9100`) | `promtool check config`: valid syntax |
+| `deploy/prometheus_alerts.yml` | Alert `PSIDriftHigh`: `psi{feature="text_length"} > 0.25` for 1 minute | `promtool`: 1 rule found, valid syntax. Never fired |
+
+```bash
+uv run python scripts/psi_exporter.py        # then: curl localhost:9100/metrics
+```
+
+### Grafana panels (proposed, not built)
+
+| Panel | Query |
+|---|---|
+| p95 latency of `/predict` | `histogram_quantile(0.95, sum by (le) (rate(bentoml_service_request_duration_seconds_bucket{endpoint="/predict"}[5m])))` |
+| PSI per feature | `psi` |
+
+The metric names come from the `/metrics` output of the bento seen in Phase 13. The queries themselves were not run.
+
+### Limitations
+
+* The exporter is a separate process on port 9100, not the `/metrics` of the BentoML service.
+* The exporter reads a file; if the file is old, it shows old values without a warning.
+* No Alertmanager, so no notification would be sent; the rule is only the condition.
+* Checklist item 12 (Grafana with two panels and a screenshot) is **not done**.
+
 ## Roadmap
 
 | Phase | Title | Status |
@@ -743,7 +774,7 @@ PSI uses 10 bins whose edges are the quantiles of the reference data. Common rea
 | 14 | Canary rollout with nginx (config written and syntax-checked, not run) | Done |
 | 15 | TensorRT FP16 acceleration | Skipped |
 | 16 | Batch scoring and drift detection (PSI and Evidently) | Done (reference is half of the same file) |
-| 17 | Monitoring with Prometheus, Grafana and an alert, then the final architecture diagram | Planned |
+| 17 | Monitoring with Prometheus, Grafana and an alert, then the final architecture diagram | Partly done (exporter run; Prometheus config and alert rule syntax-checked; Grafana not built; diagram pending) |
 
 ## Known Issues
 
@@ -809,11 +840,11 @@ PSI uses 10 bins whose edges are the quantiles of the reference data. Common rea
 
 ✅ 10- Drift check triggered after every batch scoring run (reference is half of the same file; see Phase 16)
 
-☐ 11- Prometheus exposes the PSI score at /metrics
+✅ 11- Prometheus exposes the PSI score at /metrics (a small exporter on :9100 does; Prometheus itself was not run; see Phase 17)
 
-☐ 12- Grafana: ≥ 2 panels (p95 + PSI) — screenshot in README
+❎ 12- Grafana: ≥ 2 panels (p95 + PSI) — screenshot in README (panels documented, Grafana not run, no screenshot)
 
-☐ 13- Alert: PSI > 0.25 → notification documented in README
+✅ 13- Alert: PSI > 0.25 → notification documented in README (rule written and syntax-checked, never fired, no Alertmanager)
 
 ✅ 14- 12-layer AraBERT distilled to a 6-layer student — model on the Hub with its SHA-256 (see Phase 7)
 
