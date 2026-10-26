@@ -1,5 +1,6 @@
 """PSI and Evidently drift reports on the batch-scored validation split."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from evidently.presets import DataDriftPreset
 
 SCORED = Path("data/scoring/output/val_scored.csv")
 FEATURES = ["text_length", "confidence"]
+PSI_LATEST = Path("reports/psi_latest.json")
 N_BINS = 10
 EPS = 1e-6
 
@@ -41,13 +43,17 @@ def main() -> int:
         "val_halves": (current, "same distribution, expected: no drift"),
         "long_reviews": (long_reviews, "artificial drift: reviews above the median length"),
     }
+    latest: dict[str, dict[str, float]] = {}
     for name, (cur, note) in runs.items():
         sys.stdout.write(f"[{name}] {note} (reference={len(reference)}, current={len(cur)})\n")
         for col in FEATURES:
-            sys.stdout.write(f"  PSI {col}: {psi(reference[col], cur[col]):.4f}\n")
+            value = psi(reference[col], cur[col])
+            latest.setdefault(name, {})[col] = value
+            sys.stdout.write(f"  PSI {col}: {value:.4f}\n")
         out = Path(f"reports/drift_report_{name}.html")
         evidently_report(cur, reference, out)
         sys.stdout.write(f"  saved {out}\n")
+    PSI_LATEST.write_text(json.dumps(latest, indent=2), encoding="utf-8")
     return 0
 
 

@@ -17,6 +17,7 @@ dependencies = [
     "mlflow==3.10.1",
     "dvc[gdrive]>=3.67.1",
     "pyopenssl>=24.3.0",
+    "prometheus-client>=0.26.0",
 ]
 
 [dependency-groups]
