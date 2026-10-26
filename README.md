@@ -645,6 +645,27 @@ On this machine a larger batch is more expensive per review. The padded length g
 
 `bentoml containerize` produced `arabic-sentiment-bento:0.1.0` (1.48 GB on disk, 386 MB compressed). It was started and checked functionally: `/readyz` returned 200 and `/predict` returned the same confidence as the local service (0.9552454352378845). The log shows that PyTorch is not installed and only the tokenizer is used. The container was **not** load tested and the image was not pushed to a registry.
 
+### Batch scoring
+
+`scripts/batch_score.py` scores the whole validation split (the same 20% split as before, `random_state=42`) with the INT8 model from the BentoML store, in batches of 32 reviews sorted by length (less padding). It writes `data/scoring/output/val_scored.csv` with `text_length`, `label`, `confidence`, `true_label` and `model_version`. The output folder is ignored by git.
+
+```bash
+uv run python scripts/batch_score.py
+```
+
+| Item | Value |
+|---|---|
+| Rows scored | 7,763 |
+| Wall-clock time | 551.2 s (about 9 minutes) |
+| Throughput | 14.1 rows/s |
+| Accuracy | 0.8177 (same as the INT8 row in Phase 12) |
+
+* The first estimate was 3 to 4 minutes; the real time was about 9. The reason was not measured. Long reviews at the end of the sorted order, with more padding, are one possible explanation.
+* The validation split was also used to choose the best teacher run, so this file is suitable to test the scoring and drift pipeline, not as new data.
+* The throughput should not be compared with the 12 req/s of the web service: the conditions differ (sorted batches of 32 against concurrent single requests, and different test setups).
+* Peak memory and cost per million predictions were not measured.
+* The checklist asks for `/data/scoring/output/`; the script writes to `data/scoring/output/` inside the project.
+
 ### Limitations
 
 * One run per setting; the settings were found by trial on a 4 GB laptop and may not transfer to other hardware.
@@ -721,7 +742,7 @@ On this machine a larger batch is more expensive per review. The padded length g
 
 ❎ 5- Locust after TensorRT in /reports/locust_trt.html — p95 in README (skipped)
 
-☐ 6- Batch scoring: ≥ 1,000 samples, output to /data/scoring/output/
+✅ 6- Batch scoring: ≥ 1,000 samples, output to data/scoring/output/ (7,763 rows; see Phase 13)
 
 ☐ 7- nginx canary config: weight 5/95 — rollout stages in README
 
