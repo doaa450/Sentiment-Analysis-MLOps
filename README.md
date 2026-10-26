@@ -109,7 +109,23 @@ flowchart LR
     LC --> RP["reports/<br/>HTML and CSV"]
     GH["GitHub<br/>push to main"] --> CI["GitHub Actions<br/>lint, test + F1 gate, build"]
     CI -->|"push on main"| GR["ghcr.io image"]
+    HF --> OX["ONNX export + INT8<br/>student_int8.onnx"]
+    OX --> BS["BentoML store<br/>model + tokenizer"]
+    BS --> BT["BentoML service<br/>adaptive batching"]
+    LC -->|"50 users"| BT
+    BT --> BC["Docker image<br/>no PyTorch"]
+    OX --> BA["Batch scoring<br/>val_scored.csv"]
+    BA --> DR["Drift check<br/>PSI + Evidently"]
+    DR --> PX["PSI exporter<br/>:9100/metrics"]
+    NG["nginx canary 5/95<br/>config only"] -.-> BT
+    NG -.-> CD["Candidate FP32<br/>not built"]
+    BT -.-> PR["Prometheus<br/>config only"]
+    PX -.-> PR
+    PR -.-> GF["Grafana<br/>not built"]
+    PR -.-> AL["Alert PSI > 0.25<br/>rule only"]
 ```
+
+Solid arrows were run; dashed arrows are written configuration that was not run.
 
 Project layout:
 
@@ -142,12 +158,24 @@ Sentiment-Analysis-MLOps/
 │   ├── eval_pytorch.py          # evaluate a Hub model on the validation split
 │   ├── eval_onnx.py             # evaluate an ONNX model on the validation split
 │   ├── bench_latency.py         # batch-1 CPU latency per variant
-│   └── make_benchmark_table.py  # builds reports/benchmark_table.{md,csv}
+│   ├── make_benchmark_table.py  # builds reports/benchmark_table.{md,csv}
+│   ├── save_to_bento.py         # INT8 model + tokenizer -> BentoML store
+│   ├── batch_score.py           # scores the validation split, then runs the drift check
+│   ├── drift_check.py           # PSI + Evidently reports
+│   └── psi_exporter.py          # serves the PSI gauge on :9100/metrics
 ├── metrics/
 │   ├── metrics.json             # recorded F1 of the current best model
 │   └── baseline.json            # F1 threshold used by the gate
+├── serving/
+│   ├── service.py               # BentoML service (adaptive batching)
+│   └── bentofile.yaml           # bento packaging
+├── deploy/
+│   ├── nginx_canary.conf        # 95/5 split (syntax-checked, not run)
+│   ├── prometheus.yml           # scrape config (syntax-checked, not run)
+│   └── prometheus_alerts.yml    # PSI alert rule (syntax-checked, not fired)
 ├── locust/
 │   ├── locustfile.py            # load test definition
+│   ├── locustfile_bento.py      # same test for the BentoML payload
 │   └── samples.txt              # 200 real reviews sampled from the dataset
 ├── reports/
 │   ├── mlflow_comparison.png
@@ -158,6 +186,9 @@ Sentiment-Analysis-MLOps/
 │   ├── benchmark_table.md       # 4-variant table (also .csv)
 │   ├── eval_*.json              # accuracy / F1 per variant
 │   ├── latency_*.json           # p50 / p95 / size per variant
+│   ├── locust_bento*.{html,csv} # BentoML runs, including the failed 503 runs
+│   ├── drift_report_*.html      # Evidently reports
+│   ├── psi_latest.json          # latest PSI values
 │   └── onnx_parity_student.json # ONNX vs PyTorch check
 ├── models/onnx/
 │   └── student_int8.onnx        # INT8 student (the FP32 file is git-ignored)
