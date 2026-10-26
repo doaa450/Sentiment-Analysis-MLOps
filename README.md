@@ -23,6 +23,7 @@ An end-to-end MLOps pipeline for classifying Arabic customer reviews as **negati
 * [Phase 10: CI/CD with GitHub Actions](#phase-10-cicd-with-github-actions)
 * [Phase 11: Load Testing the FastAPI Baseline](#phase-11-load-testing-the-fastapi-baseline)
 * [Phase 12: ONNX Export, INT8 Quantization and Benchmark](#phase-12-onnx-export-int8-quantization-and-benchmark)
+* [Phase 13: BentoML Serving with Adaptive Batching](#phase-13-bentoml-serving-with-adaptive-batching)
 * [Roadmap](#roadmap)
 * [Known Issues](#known-issues)
 * [Completion Checklists](#completion-checklists)
@@ -46,6 +47,7 @@ Customer reviews are noisy, written in Modern Standard Arabic and in regional di
 * **GitHub Actions** CI: lint, tests with an F1 quality gate, Docker build and push
 * **Locust** load test of the FastAPI baseline, saved as an HTML report and CSV files
 * **ONNX Runtime** export and dynamic **INT8** quantization of the student, benchmarked against PyTorch on accuracy, size and latency
+* **BentoML** service for the INT8 student with adaptive batching, health probes and a `/metrics` endpoint, packaged as a Docker image without PyTorch
 * Linting (ruff) and pre-commit hooks, with unit tests that do not need the real model
 
 ## Results at a Glance
@@ -75,7 +77,7 @@ Details are in [Phase 6](#phase-6-experiment-tracking-with-mlflow), [Phase 8](#p
 |---|---|
 | Modeling | PyTorch, Hugging Face Transformers, AraBERT v2 (`aubmindlab/bert-base-arabertv2`), scikit-learn |
 | Training | Kaggle notebooks (GPU) |
-| Serving | FastAPI, Pydantic, uvicorn |
+| Serving | FastAPI, Pydantic, uvicorn; BentoML 1.4 (INT8 ONNX service) |
 | Packaging | uv, setuptools (`src/` layout), ruff, pre-commit, pytest |
 | Containers | Docker (multi-stage), Docker Compose |
 | Experiment tracking | MLflow 3.10.1, PostgreSQL 16, a MinIO-compatible S3 artifact store |
@@ -555,7 +557,7 @@ The production candidate is the **distilled student exported to ONNX and quantiz
 - **Latency:** the median is 34.5 ms per review, 5.2 times faster than the teacher. The p95 (150.6 ms) is about the same as ONNX FP32 (147.3 ms), so INT8 mainly helps the median and the size.
 - **Cost:** the neutral-class F1 is lower than the teacher's (0.2593 against 0.2806). Neutral reviews are only about 5% of the data, so this is the main trade-off. If the neutral class matters most, the teacher is the better choice, at a higher cost in size and latency.
 
-This choice rests on one validation set, which was also used to select the best teacher run, and on a single-request latency test. The model has not been load tested yet; the plan is to serve it with BentoML in the next phase and measure it under load.
+This choice rests on one validation set, which was also used to select the best teacher run, and on a single-request latency test. At the time of this phase the model had not been load tested; it is served with BentoML and load tested in [Phase 13](#phase-13-bentoml-serving-with-adaptive-batching).
 
 ### Limitations
 
@@ -563,6 +565,92 @@ This choice rests on one validation set, which was also used to select the best 
 - This is single-request latency, not a load test. Phase 11 measured the FastAPI service under 50 users with the older published model (`DoaaMoh/arabert-sentiment`), so those numbers are not directly comparable with this table.
 - Label agreement between the FP32 and INT8 models was not measured separately; only the metrics on the validation set were compared.
 - The numbers depend on this laptop. Only the comparison between variants measured under the same conditions is meaningful.
+
+## Phase 13: BentoML Serving with Adaptive Batching
+
+This phase serves the INT8 student from Phase 12 with BentoML (1.4.40, new-style `@bentoml.service` API; the legacy `Runner` is deprecated in this version) and measures it under the same Locust test as Phase 11.
+
+### What was built
+
+| File | Role |
+|---|---|
+| `scripts/save_to_bento.py` | Saves `student_int8.onnx` and its tokenizer into the BentoML model store as `arabic_sentiment_student_int8`. The metadata records the SHA-256 (`9c00e74d...e435`) and the size (93,091,251 bytes) |
+| `serving/service.py` | `SentimentService`: ONNX Runtime CPU session (2 threads), tokenizer loaded from the model store, softmax in numpy, `@bentoml.api(batchable=True)` |
+| `serving/bentofile.yaml` | Packages the service and the model; dependencies are `onnxruntime`, `transformers` and `numpy` only (no PyTorch) |
+| `locust/locustfile_bento.py` | Copy of the Phase 11 test with three changes: payload `{"texts": [review]}`, the response is read as `[0]`, and the health task calls `/livez` |
+
+* The tokenizer is stored inside the model, so the image does not download anything at start. Its token ids matched the Hub tokenizer on all 200 sample reviews (0 differences).
+* `model_version` in each response is the real model-store tag (`arabic_sentiment_student_int8:td4vvgwqkc7p6aav`), not a hand-written string.
+* Probes and metrics come with BentoML: `/livez`, `/readyz`, `/metrics` (includes `bentoml_service_adaptive_batch_size`).
+
+### How to run
+
+```bash
+uv run python scripts/save_to_bento.py
+cd serving
+uv run bentoml serve service:SentimentService --port 3000
+curl -s -X POST localhost:3000/predict -H 'Content-Type: application/json' -d '{"texts": ["الخدمة ممتازة"]}'
+uv run bentoml build
+uv run bentoml containerize sentiment_service:latest --image-tag arabic-sentiment-bento:0.1.0
+```
+
+The request body is a list (`{"texts": [...]}`) and the response is a list of `{label, confidence, model_version}`, because a batchable method receives a list.
+
+### Tuning: what went wrong first
+
+The first load tests (50 users, 2 minutes) returned `503 process is overloaded` for 64% to 74% of the requests, with `max_batch_size` 16 or 4 and the default `concurrency`. Their reports are kept in `reports/` (`locust_bento*`) as evidence, and their latency numbers are not meaningful because rejected requests return quickly. The two runs below are the ones that matter (one run each):
+
+| Setting | `/predict` failures | p50 | p95 |
+|---|---|---|---|
+| `max_batch_size=16`, `max_latency_ms=10000`, `concurrency=64` | 26.7% | 4,700 ms | 7,700 ms |
+| **`max_batch_size=2`, `max_latency_ms=10000`, `concurrency=64`** | **0%** | **2,400 ms** | **4,700 ms** |
+
+* `concurrency` is BentoML's admission limit: requests above it are rejected with 503. It is set to 64, above the 50 test users. Its default value in this version was not checked.
+* Changing `max_latency_ms` from 50 to 1000 made no visible difference.
+* The effect of `concurrency` and of `max_batch_size` was not separated: they were changed together.
+
+### Why a small batch: model time per batch
+
+Measured directly on the ONNX session (model only, 10 runs per size, same laptop):
+
+| Batch size | Padded length (tokens) | Time per batch | Time per review |
+|---|---|---|---|
+| 1 | 6 | 24 ms | 24 ms |
+| 4 | 25 | 253 ms | 63 ms |
+| 8 | 42 | 988 ms | 123 ms |
+| 16 | 87 | 3,500 ms | 219 ms |
+
+On this machine a larger batch is more expensive per review. The padded length grows with the batch because every review is padded to the longest one; this is the likely cause, but it was not isolated (for example by sorting reviews by length).
+
+### Result: FastAPI vs BentoML
+
+50 users, spawn rate 5, 2 minutes, CPU, 2 threads, `max_batch_size=2`, `concurrency=64`.
+
+| | FastAPI (Phase 11) | BentoML |
+|---|---|---|
+| Model | `arabert-sentiment` (teacher, PyTorch FP32) | Student INT8 (ONNX Runtime) |
+| `/predict` requests | 602 | 1,441 |
+| Failures | 0 | 0 |
+| p50 | 7,500 ms | 2,400 ms |
+| p95 | 14,000 ms | 4,700 ms |
+| p99 | 20,000 ms | 6,400 ms |
+| Throughput | 4.95 req/s | 12.02 req/s |
+| Average batch size | 1 | about 2.0 (1505 / 758 from `/metrics`) |
+
+* The gain comes from two changes together: a smaller, faster model (Phase 12) and the BentoML service. They were not measured separately, so it cannot be attributed to batching alone.
+* Not a pure comparison: one run each; the payload differs (`{"text": ...}` vs `{"texts": [...]}`); the health task calls `/health` vs `/livez`; the BentoML service was warmed with concurrent requests before the test.
+* Report: `reports/locust_bento_bs2.html` and its CSV files.
+
+### Container
+
+`bentoml containerize` produced `arabic-sentiment-bento:0.1.0` (1.48 GB on disk, 386 MB compressed). It was started and checked functionally: `/readyz` returned 200 and `/predict` returned the same confidence as the local service (0.9552454352378845). The log shows that PyTorch is not installed and only the tokenizer is used. The container was **not** load tested and the image was not pushed to a registry.
+
+### Limitations
+
+* One run per setting; the settings were found by trial on a 4 GB laptop and may not transfer to other hardware.
+* The cause of the slow large batches (padding) is an interpretation of the measurements, not a proven result.
+* The checklist asks for `localhost:8000`; BentoML listens on 3000 by default and the service was run there.
+* Model quality was not re-evaluated through the service. The numpy softmax was checked on two reviews only, not against the FastAPI outputs on the validation set.
 
 ## Roadmap
 
@@ -573,7 +661,7 @@ This choice rests on one validation set, which was also used to select the best 
 | 10 | CI/CD with GitHub Actions and an F1 quality gate | Done |
 | 11 | Load testing the FastAPI baseline (Locust) | Done |
 | 12 | ONNX export, INT8 quantization and benchmark table | Done |
-| 13 | BentoML serving with adaptive batching | Planned |
+| 13 | BentoML serving with adaptive batching | Done |
 | 14 | Canary rollout with nginx | Planned |
 | 15 | TensorRT FP16 acceleration | Skipped |
 | 16 | Batch scoring and drift detection (PSI and Evidently) | Planned |
@@ -623,9 +711,9 @@ This choice rests on one validation set, which was also used to select the best 
 
 ### Project 1 · Deep Learning: Serving, Monitoring, Optimization
 
-☐ 1- BentoML service with batchable=True Runner — bentoml models list shows the model
+✅ 1- BentoML service with batchable=True — bentoml models list shows the model (new-style `@bentoml.service`, not the legacy Runner; see Phase 13)
 
-☐ 2- bentoml serve runs /predict at localhost:8000
+✅ 2- bentoml serve runs /predict at localhost:3000 (the default BentoML port; the checklist says 8000)
 
 ✅ 3- Locust report before optimization in /reports/locust_fastapi.html
 
