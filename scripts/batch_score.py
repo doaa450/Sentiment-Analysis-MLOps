@@ -1,5 +1,6 @@
 """Score the validation split with the INT8 model from the BentoML store (batch job)."""
 
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -75,7 +76,8 @@ def main() -> int:
         f"rows={len(out)} seconds={elapsed:.1f} rows_per_sec={len(out) / elapsed:.1f} "
         f"accuracy={(out['label'] == out['true_label']).mean():.4f} -> {OUTPUT_PATH}\n"
     )
-    return 0
+    # Item 10: run the drift check after every scoring run
+    return subprocess.run([sys.executable, "scripts/drift_check.py"], check=False).returncode
 
 
 if __name__ == "__main__":
