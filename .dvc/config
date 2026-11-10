@@ -1,4 +1,6 @@
 [core]
-    remote = storage
+    remote = origin
 ['remote "storage"']
     url = gdrive://1vG31KF3ELPA7lyHHE6DVsYYzgmZ9edEe
+['remote "origin"']
+    url = https://dagshub.com/doaa450/Sentiment-Analysis-MLOps.dvc
